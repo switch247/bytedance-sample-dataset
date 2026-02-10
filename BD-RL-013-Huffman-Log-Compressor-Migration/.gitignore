@@ -1,0 +1,33 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+**/[Bb]in/
+**/[Oo]bj/
+
+# Test results
+TestResults/
+
+# IDE caches
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.sln.iml
+
+# NuGet packages
+*.nupkg
+*.snupkg
+
+# Logs and OS files
+*.log
+Thumbs.db
+.DS_Store
+
+# Dataset artifacts
+repository_before/CrmData/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

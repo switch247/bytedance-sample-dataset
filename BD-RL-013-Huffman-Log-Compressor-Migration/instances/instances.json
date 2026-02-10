@@ -1,0 +1,10 @@
+{
+  "instance_id": "BD-RL-013",
+  "problem_statement": "",
+  "base_commit": "repository_before",
+  "test_patch": "tests/",
+  "repo": "https://github.com/switch47/bytedance-sample-dataset/tree/main/BD-RL-013-Huffman-Log-Compressor-Migration",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [],
+  "PASS_TO_PASS": []
+}
