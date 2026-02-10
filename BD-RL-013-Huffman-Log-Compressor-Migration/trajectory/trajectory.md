@@ -6,15 +6,16 @@ This document records the migration of a Huffman compression utility from a Pyth
 
 ## Understanding
 
-- Problem: The Python implementation uses string-based bit representations and in-memory data structures that make it unsuitable for multi-gigabyte log processing. The aim is to port to Go to gain low-level bit manipulation, streaming I/O, and predictable memory usage.
-- Requirements summarized:
+- **Starting State**: The project initially contained only the `repository_before` directory (a legacy Python implementation). No Go code was present at the onset.
+- **Goal**: Refactor/Migrate to a Go implementation that solves the memory and performance bottlenecks of the Python string-based approach.
+- **Requirements summarized**:
   - Use bitwise operators for packing/unpacking; avoid string bit buffers.
   - Support streaming via `io.Reader` and `io.Writer`.
   - Include a serialized header (tree or frequency table) for cross-language compatibility.
   - Store padding metadata so the decoder can ignore trailing filler bits.
   - Robust error handling for corrupted headers/truncated streams/empty input.
   - Handle all 256 byte values and single-symbol inputs.
-  - Provide unit tests including a 10KB random roundtrip and adversarial truncated/header-corrupted tests.
+  - Provide unit tests as the **final verification step**, including a 10KB random roundtrip and adversarial truncated/header-corrupted tests.
 
 ## Questions to Understand (for stakeholders / future readers)
 
@@ -143,36 +144,47 @@ How testcases were chosen:
 1. Requirement gathering and constraints
    - The encoder must use bitwise ops and support streaming. Huffman coding requires knowledge of symbol frequencies to build an optimal tree; therefore a frequency pass is necessary unless an adaptive algorithm is chosen.
 
-2. Decide header format
-   - Choose a compact deterministic header that is unambiguous and easy to parse: fixed magic + padding + entry count + symbol/frequency pairs.
+2. Architecture for Scaling (The "Streaming" Thought)
+   - To process files larger than RAM, we cannot use `io.ReadAll`. We decided on a **2-pass streaming approach**.
+   - **Pass 1**: Read the input stream in chunks (buffered) to calculate character frequencies.
+   - **Internal Buffering**: To support generic non-seekable `io.Reader` inputs, we buffer Pass 1 data to a **temporary disk file** (`os.CreateTemp`). This ensures memory usage remains constant (O(1) relative to file size).
+   - **Pass 2**: Rewind the temporary file and perform the actual bitwise encoding.
+
+3. Optimization for Performance (The "Bitwise" Thought)
+   - String concatenation of bits (`"0" + "1"`) is the primary bottleneck in the legacy code.
+   - **Accumulator Pattern**: We use a `uint64` accumulator to pack bits. For each byte, we fetch its bit-code and shift it into the accumulator.
+   - **Batch Flushing**: Once the accumulator holds 8 or more bits, we flush those bytes to the output buffer and retain the remainder. This minimizes bit-level loops and leverages the CPU's ability to process words.
+   - **Fixed-Array Lookups**: Instead of map lookups (which incur hashing overhead), we use a `[256]Code` array for O(1) code retrieval during the final encoding loop.
+
+4. Decide header format
+   - Choose a compact deterministic header that is unambiguous and easy to parse: fixed magic `HUF1` + padding byte + entry count + symbol/frequency pairs.
    - Use little-endian binary encoding for counts to simplify `encoding/binary` usage.
 
-3. Deterministic ordering
+5. Deterministic ordering
    - To ensure identical encodings across runs, sort symbol entries deterministically. Use frequency first, then symbol value as tie-breaker.
 
-4. Core data structures
+6. Core data structures
    - Implement `Node` with `left`/`right` pointers; a priority queue for building the tree with deterministic comparison.
 
-5. Code generation
+7. Code generation
    - Walk the tree recursively to assign bit sequences; in the single-symbol case, assign a placeholder code (`0`). Ensure canonical traversal so codes are stable.
 
-6. Encoding bitstream
-   - Use a second pass over input; write bits into a byte accumulator: `acc = (acc << 1) | bit` and increment a `bitCount`; when `bitCount == 8`, flush `acc` to output. Track final padding as `(8 - (bitCount % 8)) % 8`.
+8. Header insertion and update
+   - Write a header with a placeholder padding byte, write payload, then update the header padding (or write padding before payload if padding can be computed from final bitCount). We chose to calculate total bits during Pass 1 to write the final padding byte immediately in the header, avoiding the need for `Seek` on the output stream.
 
-7. Header insertion and update
-   - Write a header with a placeholder padding byte, write payload, then update the header padding (or write padding before payload if padding can be computed from final bitCount). To avoid seeking on non-seekable `io.Writer`, either buffer header+payload in memory or write header fully first when padding can be computed; for streaming large files, write header with padding placeholder and ensure `io.Writer` is seekable (files) or emit the padding as a final trailer (alternative design). We chose the approach that writes header first with padding placeholder and updates it when possible; for non-seekable writers, emit padding metadata in a small trailer block after payload.
+9. Decoding bitstream
+   - Read header, reconstruct tree, then read payload bytes. For each byte, iterate bits MSB-first: `(b >> (7-i)) & 1`. Walk the tree per-bit; upon reaching a leaf, write that symbol and reset to root. Use the `expected_count` from metadata to know exactly when to stop, ignoring trailing padding bits.
 
-8. Decoding bitstream
-   - Read header, reconstruct tree, then read payload bytes. For each byte, iterate bits MSB-first: `(b >> (7-i)) & 1`. Walk the tree per-bit; upon reaching a leaf, write that symbol and reset to root. When reaching final byte, mask off padding bits.
+10. Error detection
+    - Validate header magic, ensure declared count of symbols matches readable entries, and during decode, verify total decoded symbols equals the sum of frequencies from header; otherwise return an error.
 
-9. Error detection
-   - Validate header magic, ensure declared count of symbols matches readable entries, and during decode, verify total decoded symbols equals the sum of frequencies from header; otherwise return an error.
+11. Verification (The Final Step)
+    - Implement unit tests to confirm functional correctness and measure throughput.
+    - Validate against the 50MB performance target and ensure sub-5-second encoding.
+    - Confirm the Go implementation is substantially faster and more memory-efficient than the Python baseline.
 
-10. Testing and verification
-   - Implement unit tests above. For performance tests (50MB), measure elapsed time and memory RSS; compare against Python baseline runs, and iterate on hotspot optimizations.
-
-11. Optional: single-pass streaming
-   - If single-pass is a strict requirement, explore adaptive Huffman (FGK or Vitter) or a separate frequency producer upstream that writes a compact frequency header before payload so encoder can read frequencies and stream payload without buffering the full source.
+12. Optional: single-pass streaming
+    - If single-pass is a strict requirement, explore adaptive Huffman (FGK or Vitter) or a separate frequency producer upstream that writes a compact frequency header before payload so encoder can read frequencies and stream payload without buffering the full source.
 
 ## External References
 
