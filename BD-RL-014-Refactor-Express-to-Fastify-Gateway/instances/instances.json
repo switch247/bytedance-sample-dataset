@@ -1,0 +1,10 @@
+{
+  "instance_id": "BD-RL-014 -Refactor-Express-to-Fastify-Gateway",
+  "problem_statement": "The objective is to refactor a monolithic Express.js REST gateway into a production-hardened Fastify implementation. The legacy service currently suffers from high framework overhead, leading to excessive memory consumption and latency spikes on low-spec hardware. The new implementation must leverage Fastify's native optimizations, including AJV-based schema validation and the fast-json-stringify engine, to maximize throughput and achieve a significant increase in requests per second (RPS) while maintaining strict endpoint parity.",
+  "base_commit": "repository_before",
+  "test_patch": "tests/",
+  "repo": "https://github.com/switch47/bytedance-sample-dataset/tree/main/BD-RL-014-Refactor-Express-to-Fastify-Gateway",
+  "environment_setup": "Dockerfile",
+  "FAIL_TO_PASS": [],
+  "PASS_TO_PASS": []
+}

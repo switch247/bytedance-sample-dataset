@@ -1,0 +1,43 @@
+version: '3.8'
+services:
+  after:
+    build:
+      context: .
+    volumes:
+      - ./:/app
+    working_dir: /app
+    # run Node.js tests when invoking `docker compose run --rm after`
+    command: ["npm", "run", "test:after"]
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1.0"
+    #       memory: 512M
+
+  before:
+    build:
+      context: .
+    volumes:
+      - ./:/app
+    working_dir: /app
+    # run Node.js tests when invoking `docker compose run --rm before`
+    command: ["npm", "run", "test:before"]
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1.0"
+    #       memory: 512M
+
+  evaluation:
+    build:
+      context: .
+    volumes:
+      - ./:/app
+    working_dir: /app
+    # run the evaluation script which will invoke docker-compose runs for before/after
+    command: ["node", "evaluation/evaluation.js"]
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "1.0"
+    #       memory: 512M
